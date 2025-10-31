@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battery Health Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .section-header {
+            @apply text-xl font-bold text-indigo-700 mt-6 mb-3 border-b pb-2 border-indigo-100;
+        }
+        
+        /* New keyframe animation for a subtle glowing shadow */
+        @keyframes shadow-glow {
+            0%, 100% { 
+                /* Base shadow from Tailwind shadow-xl */
+                box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); 
+            } 
+            50% { 
+                /* Enhanced shadow based on the CSS variable --glow-rgb */
+                box-shadow: 0 20px 30px -5px rgba(var(--glow-rgb), 0.7), 0 8px 15px -6px rgba(var(--glow-rgb), 0.5); 
+            }
+        }
+        .glowing-box {
+            animation: shadow-glow 2s ease-in-out infinite alternate;
+            transition: box-shadow 0.5s ease-in-out;
+        }
+
+        /* TOAST ANIMATION */
+        @keyframes toast-in {
+            0% { transform: translateX(100%); opacity: 0; }
+            10% { transform: translateX(-10%); opacity: 1; }
+            100% { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes toast-out {
+            0% { transform: translateX(0); opacity: 1; }
+            100% { transform: translateX(100%); opacity: 0; }
+        }
+        .toast-show {
+            animation: toast-in 0.5s forwards;
+        }
+        .toast-hide {
+            animation: toast-out 0.5s forwards;
+        }
+        /* End TOAST ANIMATION */
+        
+        /* Style for the non-capacity metadata rows to be easily hidden/shown */
+        .metadata-row {
+            transition: opacity 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-screen flex items-center justify-center">
+    
+    <!-- TOAST CONTAINER (fixed position) -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2 max-w-xs w-full">
+        <!-- Toast messages will be injected here -->
+    </div>
+    <!-- END TOAST CONTAINER -->
+
+    <div class="w-full max-w-xl bg-white shadow-2xl rounded-xl p-6 sm:p-8 border border-gray-100">
+        <h1 class="text-3xl font-extrabold text-gray-800 mb-2 text-center">
+        Battery Health Analyzer
+        </h1>
+        <p class="text-center text-gray-500 mb-6">
+            Manual Entry or Automated HTML File Upload.
+        </p>
+
+        <h2 class="section-header"><b>Input Values </b></h2><br>
+        <div class="flex justify-center">
+        <div class="space-y-4 mb-6 p-4 bg-gray-100 rounded-lg w-full max-w-xs">
+            <div>
+                <label for="designCapacityInput" class="block text-sm font-medium text-gray-700">Design Capacity (mWh)</label>
+                <input type="number" id="designCapacityInput" placeholder="e.g., 50000" min="1"
+                       class="w-full mt-1 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition duration-150 ease-in-out">
+            </div>
+            <div>
+                <label for="fullChargeCapacityInput" class="block text-sm font-medium text-gray-700">Full Charge Capacity (mWh)</label>
+                <input type="number" id="fullChargeCapacityInput" placeholder="e.g., 45000" min="1"
+                       class="w-full mt-1 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition duration-150 ease-in-out">
+            </div>
+            <!-- NEW INPUT FIELD FOR AGE OF BATTERY -->
+            <div>
+                <label for="batteryAgeInput" class="block text-sm font-medium text-gray-700">Age of Battery (Months)</label>
+                <input type="number" id="batteryAgeInput" placeholder="e.g., 18" min="0" value="0"
+                       class="w-full mt-1 px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500 transition duration-150 ease-in-out">
+                <p class="text-xs text-gray-500 mt-1">
+                    *Used for Estimated End-of-Life.
+                </p>
+            </div>
+            <!-- INPUT FIELD FOR AVERAGE CONSUMPTION (REMOVED to simplify) -->
+        </div>
+        </div><br>
+
+        <h2 class="section-header"><b>HTML File Upload</b></h2>
+        <div class="space-y-4">
+            <label for="fileUploadInput" class="block text-sm font-medium text-gray-700 mb-2">Upload your <b>battery-report.html</b> file</label>
+            
+            <input type="file" id="fileUploadInput" accept=".html"
+                   class="w-full text-sm text-gray-500
+                          file:mr-4 file:py-2 file:px-4
+                          file:rounded-full file:border-0
+                          file:text-sm file:font-semibold
+                          file:bg-gray-100 file:text-gray-700
+                          hover:file:bg-gray-300 transition duration-150 ease-in-out"/>
+        </div>
+        
+        <!-- UPDATED: Added metadata fields and separated capacity/metadata rows -->
+        <div class="mt-6 p-4 border border-gray-200 bg-gray-100 rounded-lg text-sm">
+            <p class="font-bold mb-1 text-gray-700">Battery Overview</p>
+
+            <!-- ADDED: Report Time Display -->
+            <div id="reportTimeRow" class="flex justify-between py-1 border-b border-gray-100 metadata-row opacity-0">
+                <span class="font-semibold text-gray-600">Report Time :</span>
+                <span id="reportTimeDisplay" class="font-mono text-gray-800">--</span>
+            </div>
+            <!-- Always visible Capacity Fields -->
+            <div class="flex justify-between py-1 border-b border-gray-100">
+                <span class="font-semibold text-gray-600">Design Capacity :</span>
+                <span id="designCapacityDisplay" class="font-mono text-gray-800">-- mWh</span>
+            </div>
+            <div class="flex justify-between py-1 border-b border-gray-100">
+                <span class="font-semibold text-gray-600">Full Charge Capacity :</span>
+                <span id="fullChargeCapacityDisplay" class="font-mono text-gray-800">-- mWh</span>
+            </div>
+            
+            <!-- NEW DISPLAY FIELD FOR ESTIMATED END-OF-LIFE -->
+            <div class="flex justify-between py-1 border-b border-gray-100">
+                <span class="font-semibold text-gray-600">Est. End-of-Life:</span>
+                <span id="estimatedLifetimeDisplay" class="font-mono text-gray-800">--</span>
+            </div>
+            <!-- END NEW DISPLAY FIELD -->
+
+            <!-- Conditional Metadata Fields (Only from File Upload) -->
+            <div id="manufacturerRow" class="metadata-row flex justify-between py-1 border-b border-gray-100 opacity-0">
+                <span class="font-semibold text-gray-600">Manufacturer :</span>
+                <span id="manufacturerDisplay" class="font-mono text-gray-800">--</span>
+            </div>
+            <div id="serialRow" class="metadata-row flex justify-between py-1 border-b border-gray-100 opacity-0">
+                <span class="font-semibold text-gray-600">Serial Number :</span>
+                <span id="serialDisplay" class="font-mono text-gray-800">--</span>
+            </div>
+            <div id="chemistryRow" class="metadata-row flex justify-between py-1 border-b border-gray-100 opacity-0">
+                <span class="font-semibold text-gray-600">Chemistry :</span>
+                <span id="chemistryDisplay" class="font-mono text-gray-800">--</span>
+            </div>
+            <div id="cycleRow" class="metadata-row flex justify-between py-1 opacity-0">
+                <span class="font-semibold text-gray-600">Cycle Count :</span>
+                <span id="cycleCountDisplay" class="font-mono text-gray-800">--</span> 
+            </div>
+        </div>
+
+
+        <!-- UPDATED: Removed pulseEffect div and added 'glowing-box' class via JS -->
+        <div id="resultContainer" class="mt-8 p-6 bg-white border border-gray-200 rounded-xl text-center transition-all duration-300 relative overflow-hidden">
+            <!-- Removed pulseEffect div -->
+
+            <div class="flex flex-col items-center justify-center space-y-4 relative z-10">
+                <!-- NOTE: The battery visual and cap start with gray borders/colors, 
+                     which are correctly overridden by the calculateHealth function on load. -->
+                <div id="batteryVisual" class="w-24 h-12 relative border-4 border-gray-400 rounded-lg transition-all duration-500">
+                    <div class="absolute top-1/2 -right-2 transform -translate-y-1/2 w-2 h-4 bg-gray-400 rounded-r-md transition-all duration-500"></div>
+                    <div id="batteryFill" class="absolute top-0 left-0 h-full transition-all duration-1000 ease-out" style="width: 0%; background-color: #d1d5db;"></div>
+                </div>
+
+                <p class="text-lg font-semibold text-gray-600">Battery Health</p>
+                <span id="healthValue" class="text-5xl font-extrabold text-gray-400 transition-colors duration-300">--%</span>
+                <span id="healthStatus" class="mt-2 text-sm font-medium px-3 py-1 rounded-full bg-gray-100 text-gray-500 transition-colors duration-300">Enter values or upload report.</span>
+            </div>
+        </div><br>
+
+
+        <h2 class="section-header"><b>Tips & Suggestions 💡</b></h2>
+        <div id="tipsContainer" class="mt-4 p-4 border border-gray-200 bg-white rounded-lg">
+            <p id="initialTip" class="text-sm text-gray-500">
+                Input your capacity values and battery age to get personalized battery care tips and life estimates.
+            </p>
+            <ul id="healthTipsList" class="list-disc pl-5 text-sm space-y-2 hidden">
+                </ul>
+        </div>
+        </div>
+
+    <script>
+        const designCapacityInput = document.getElementById('designCapacityInput');
+        const fullChargeCapacityInput = document.getElementById('fullChargeCapacityInput');
+        const batteryAgeInput = document.getElementById('batteryAgeInput'); 
+        const fileUploadInput = document.getElementById('fileUploadInput'); 
+        
+        const healthValueSpan = document.getElementById('healthValue');
+        const healthStatusSpan = document.getElementById('healthStatus');
+        const resultContainer = document.getElementById('resultContainer');
+        const designCapacityDisplay = document.getElementById('designCapacityDisplay');
+        const fullChargeCapacityDisplay = document.getElementById('fullChargeCapacityDisplay');
+        const estimatedLifetimeDisplay = document.getElementById('estimatedLifetimeDisplay'); 
+        
+        // Metadata Display Elements
+        const cycleCountDisplay = document.getElementById('cycleCountDisplay'); 
+        const manufacturerDisplay = document.getElementById('manufacturerDisplay');
+        const serialDisplay = document.getElementById('serialDisplay');
+        const chemistryDisplay = document.getElementById('chemistryDisplay');
+        // NEW: Report Time Display Element
+        const reportTimeDisplay = document.getElementById('reportTimeDisplay');
+
+        // Metadata Row Elements (for hiding/showing)
+        const metadataRows = [
+            document.getElementById('cycleRow'),
+            document.getElementById('manufacturerRow'),
+            document.getElementById('serialRow'),
+            document.getElementById('chemistryRow'),
+            // NEW: Report Time Row
+            document.getElementById('reportTimeRow') 
+        ];
+
+        // New elements for interactivity
+        const batteryVisual = document.getElementById('batteryVisual');
+        const batteryFill = document.getElementById('batteryFill');
+        const batteryCap = batteryVisual.querySelector('div:first-child');
+        
+        // Tips elements
+        const tipsContainer = document.getElementById('tipsContainer');
+        const healthTipsList = document.getElementById('healthTipsList');
+        const initialTip = document.getElementById('initialTip');
+        
+        // NEW: Toast Container
+        const toastContainer = document.getElementById('toastContainer');
+
+
+        /**
+         * Shows an animated toast notification.
+         * @param {string} message - The message content.
+         * @param {string} type - 'success' or 'error'.
+         */
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            let bgColor = type === 'success' ? 'bg-gray-100' : 'bg-gray-100';
+            let icon = type === 'success' ? '✅' : '⚠️';
+
+            toast.className = `p-4 rounded-lg shadow-xl text-black ${bgColor} toast-show flex items-center space-x-3`;
+            toast.innerHTML = `
+                <span class="text-xl">${icon}</span>
+                <p class="font-medium text-sm">${message}</p>
+            `;
+            
+            toastContainer.prepend(toast); // Add new toast to the top
+
+            // Automatically remove the toast after 4 seconds
+            setTimeout(() => {
+                toast.classList.remove('toast-show');
+                toast.classList.add('toast-hide');
+                // Wait for the hide animation to finish before removing from DOM
+                setTimeout(() => {
+                    toast.remove();
+                }, 500); 
+            }, 4000);
+        }
+
+        /**
+         * Cleans a capacity string (e.g., "55,000 mWh") into a number (55000).
+         * @param {string} capacityStr 
+         * @returns {number | null}
+         */
+        function cleanCapacityValue(capacityStr) {
+            if (!capacityStr) return null;
+            // Remove all non-digit characters except for comma/period separators, then remove separators
+            const cleaned = capacityStr.replace(/[^0-9.,]/g, '').replace(/,/g, '');
+            return parseFloat(cleaned);
+        }
+
+        /**
+         * Cleans a cycle count string (e.g., "350") into an integer (350).
+         * @param {string} cycleCountStr 
+         * @returns {number | null}
+         */
+        function cleanCycleCountValue(cycleCountStr) {
+            if (!cycleCountStr) return null;
+            // Only keep digits
+            const cleaned = cycleCountStr.replace(/\D/g, ''); 
+            return parseInt(cleaned);
+        }
+
+        /**
+         * Finds a text value associated with a given label in the report HTML.
+         * The function searches for a <th>/<td> with the label and gets the content of the next <td>.
+         * @param {Document} doc The parsed HTML document.
+         * @param {string} label The text label to search for (e.g., "DESIGN CAPACITY").
+         * @param {function} [cleaner=null] Optional cleaner function (e.g., cleanCapacityValue or cleanCycleCountValue).
+         * @returns {string | number | null} The extracted value.
+         */
+        function findValue(doc, label, cleaner = null) {
+            // Find all cells that contain the exact or close-to-exact label text (case-insensitive)
+            const cells = doc.querySelectorAll('th, td');
+            for (const cell of cells) {
+                if (cell.textContent && cell.textContent.toUpperCase().trim().includes(label.toUpperCase())) {
+                    // The value is typically in the next sibling cell
+                    const valueCell = cell.nextElementSibling;
+                    if (valueCell) {
+                        const rawValue = valueCell.textContent.trim();
+                        return cleaner ? cleaner(rawValue) : rawValue;
+                    }
+                }
+            }
+            // Special handling for Report Time, which is often in an h1/h2 or <p> before the first table
+            if (label.toUpperCase() === 'REPORT TIME') {
+                const timeElement = doc.querySelector('span[id="reportTime"], p, h2, h3');
+                if (timeElement && timeElement.textContent.includes('Time:')) {
+                    // Look for the date/time string, e.g., "Time: 2024-01-01 12:00:00"
+                    const text = timeElement.textContent;
+                    const dateMatch = text.match(/Time:\s*(.+)/i);
+                    if (dateMatch && dateMatch[1]) {
+                        return dateMatch[1].trim();
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        /**
+         * Extracts key battery metadata.
+         * @param {Document} doc The parsed HTML document.
+         * @returns {object} An object containing extracted metadata.
+         */
+        function findBatteryMetadata(doc) {
+            // The metadata items are usually in the first table or 'Installed batteries' section.
+            return {
+                reportTime: findValue(doc, 'REPORT TIME'), // NEW: Extract Report Time
+                manufacturer: findValue(doc, 'MANUFACTURER'),
+                serial: findValue(doc, 'SERIAL NUMBER'),
+                chemistry: findValue(doc, 'CHEMISTRY'),
+                cycleCount: findValue(doc, 'CYCLE COUNT', cleanCycleCountValue),
+            };
+        }
+
+        /**
+         * Toggles the visibility of metadata rows.
+         * @param {boolean} show Whether to show (true) or hide (false) the rows.
+         */
+        function toggleMetadataVisibility(show) {
+            metadataRows.forEach(row => {
+                // Ensure Report Time is only shown if there is a file upload
+                const isReportTime = row.id === 'reportTimeRow';
+
+                if (show) {
+                    if (!isReportTime || reportTimeDisplay.textContent !== '--') {
+                        row.classList.remove('opacity-0');
+                        row.classList.remove('hidden');
+                    }
+                } else {
+                    row.classList.add('opacity-0');
+                    // Hide after transition
+                    setTimeout(() => {
+                        row.classList.add('hidden');
+                    }, 300); 
+                }
+            });
+            // Ensure capacity fields are always visible (removing hidden if it was accidentally applied)
+            designCapacityDisplay.closest('.flex').classList.remove('hidden');
+            fullChargeCapacityDisplay.closest('.flex').classList.remove('hidden');
+        }
+
+        /**
+         * Updates the tips section based on the health percentage and cycle count.
+         * @param {number} healthPercentage 
+         * @param {number | null} cycleCount
+         */
+        function updateHealthTips(healthPercentage, cycleCount) {
+            let tips = [];
+            
+            // General Tip
+            tips.push('Try to keep your charge between <b>20%</b> and <b>80%</b> for daily use to minimize stress on the battery.');
+
+            if (healthPercentage >= 90) {
+                tips.push('Your battery is <b>Excellent</b>. Continue with current charging habits.');
+            } else if (healthPercentage >= 80) {
+                tips.push('Your battery is in <b>Good Health</b>. Avoid leaving it fully charged or fully depleted for extended periods.');
+            } else if (healthPercentage >= 60) {
+                tips.push('Your battery is starting to show <b>significant wear</b>. Consider reducing intensive tasks while on battery power.');
+                tips.push('Check for background apps or processes consuming excessive power. Review your device\'s power settings.');
+            } else {
+                tips.push('Your battery is in <b>Poor Health</b>. This capacity may impact your usage significantly.');
+                tips.push('It is highly recommended to <b>service or replace your battery</b> soon for optimal performance and safety.');
+                tips.push('Ensure your device is running the latest OS updates, as they often include power management improvements.');
+            }
+
+            if (cycleCount !== null && cycleCount >= 100) {
+                 // Example threshold: 500 is common maximum for high-performance laptops.
+                 if (cycleCount >= 500 && healthPercentage < 80) {
+                     tips.push(`With **${cycleCount.toLocaleString()} cycles**, your battery is near or past its expected lifespan. Replacement is advised.`);
+                 } else if (cycleCount >= 300 && healthPercentage < 80) {
+                      tips.push(`Your battery has **${cycleCount.toLocaleString()} cycles**. Degradation is normal; consider careful usage.`);
+                 }
+            }
+
+            tips.push('Minimize exposure to <b>extreme temperatures</b> (hot or cold), which accelerate battery degradation.');
+            
+            // Update the UI
+            healthTipsList.innerHTML = tips.map(tip => `<li>${tip}</li>`).join('');
+            initialTip.classList.add('hidden');
+            healthTipsList.classList.remove('hidden');
+        }
+
+        /**
+         * Formats a date object into a readable string (e.g., Oct 2025).
+         * @param {Date} date 
+         * @returns {string}
+         */
+        function formatDate(date) {
+            return date.toLocaleString('en-US', { year: 'numeric', month: 'short' });
+        }
+
+
+        /**
+         * Calculates the battery health percentage and updates the UI.
+         * @param {number | null} designCapacity 
+         * @param {number | null} fullChargeCapacity 
+         * @param {number | null} batteryAgeMonths - Age of battery in months.
+         * @param {object | null} metadata - Object containing manufacturer, serial, chemistry, cycleCount.
+         */
+        function calculateHealth(designCapacity, fullChargeCapacity, batteryAgeMonths, metadata = null) {
+            
+            const isFileUpload = metadata !== null;
+
+            // --- Update Metadata Displays ---
+            if (isFileUpload) {
+                reportTimeDisplay.textContent = metadata.reportTime || '--'; // NEW: Display Report Time
+                cycleCountDisplay.textContent = metadata.cycleCount !== null ? metadata.cycleCount.toLocaleString() : '--';
+                manufacturerDisplay.textContent = metadata.manufacturer || '--';
+                serialDisplay.textContent = metadata.serial || '--';
+                chemistryDisplay.textContent = metadata.chemistry || '--';
+                toggleMetadataVisibility(true);
+            } else {
+                reportTimeDisplay.textContent = '--'; // NEW: Clear Report Time
+                cycleCountDisplay.textContent = '--';
+                manufacturerDisplay.textContent = '--';
+                serialDisplay.textContent = '--';
+                chemistryDisplay.textContent = '--';
+                toggleMetadataVisibility(false);
+            }
+            
+            // Lifetime Calculation Setup
+            let estimatedLifetime = 'N/A';
+            
+            // Reset UI if inputs are invalid or missing
+            if (!designCapacity || !fullChargeCapacity || designCapacity <= 0 || fullChargeCapacity <= 0) {
+                healthValueSpan.textContent = '--%';
+                healthStatusSpan.textContent = 'Invalid capacities entered.';
+                healthValueSpan.className = 'text-5xl font-extrabold text-gray-400 transition-colors duration-300';
+                healthStatusSpan.className = 'mt-2 text-sm font-medium px-3 py-1 rounded-full bg-gray-100 text-gray-500 transition-colors duration-300';
+                
+                // Clear glow effect
+                resultContainer.classList.remove('glowing-box');
+                resultContainer.style.removeProperty('--glow-rgb');
+
+                // Update capacity display fields to show what was used (or not)
+                designCapacityDisplay.textContent = designCapacity ? `${designCapacity.toLocaleString()} mWh` : '-- mWh';
+                fullChargeCapacityDisplay.textContent = fullChargeCapacity ? `${fullChargeCapacity.toLocaleString()} mWh` : '-- mWh';
+                estimatedLifetimeDisplay.textContent = '--'; // Reset lifetime display
+                
+                // Reset battery visual to default gray
+                batteryFill.style.width = '0%';
+                batteryFill.style.backgroundColor = '#d1d5db';
+                batteryVisual.style.borderColor = '#9ca3af';
+                batteryCap.style.backgroundColor = '#9ca3af';
+
+                // Reset tips
+                initialTip.classList.remove('hidden');
+                healthTipsList.classList.add('hidden');
+
+                return;
+            }
+
+            // Core calculation: (Current Capacity / Original Capacity) * 100
+            const healthPercentage = (fullChargeCapacity / designCapacity) * 100;
+            const roundedHealth = healthPercentage.toFixed(1);
+            
+            
+            // --- Estimated End-of-Life Calculation (80% threshold) ---
+            if (batteryAgeMonths !== null && batteryAgeMonths >= 0 && healthPercentage <= 100.0 && healthPercentage >= 50.0) {
+                // 1. Calculate the percentage of health lost so far (Degradation)
+                const degradationPercentage = 100.0 - healthPercentage;
+                
+                // 2. Calculate the degradation rate per month
+                const degradationRatePerMonth = degradationPercentage / (batteryAgeMonths > 0 ? batteryAgeMonths : 1); 
+
+                // 3. Target Health: 80% (when battery is usually considered due for replacement)
+                const targetHealth = 80.0;
+                
+                if (healthPercentage >= targetHealth) {
+                    // Calculate remaining health percentage to lose
+                    const remainingLoss = healthPercentage - targetHealth;
+                    
+                    if (degradationRatePerMonth > 0.01) { // Prevent division by zero or extremely low rates
+                        // Time until 80% is reached
+                        const monthsRemaining = remainingLoss / degradationRatePerMonth;
+                        
+                        // Calculate total age when 80% is reached
+                        const totalAgeAt80Percent = batteryAgeMonths + monthsRemaining;
+                        
+                        // Calculate the end-of-life date
+                        const currentDate = new Date();
+                        const futureDate = new Date();
+                        
+                        // Add months remaining to the current date
+                        futureDate.setMonth(currentDate.getMonth() + Math.round(monthsRemaining));
+                        
+                        estimatedLifetime = formatDate(futureDate);
+                    } else {
+                        // Rate is near zero, suggesting almost no degradation or new battery
+                        estimatedLifetime = 'Over 3 Years (Estimate)';
+                    }
+                } else {
+                    // If health is already below 80%
+                    estimatedLifetime = `Now (${roundedHealth}% < 80%)`;
+                }
+
+            } else if (healthPercentage > 100.0) {
+                 estimatedLifetime = 'New Battery (No Estimate)';
+            }
+            
+            estimatedLifetimeDisplay.textContent = estimatedLifetime;
+            // --- End End-of-Life Calculation ---
+
+            let colorClass;
+            let statusText;
+            let batteryColorHex;
+            let glowColorRGB; // RGB for glow animation
+            
+            // Define health status and colors
+            if (healthPercentage >= 80) {
+                colorClass = 'text-green-600';
+                statusText = 'Excellent Health';
+                batteryColorHex = '#10b981'; // Green-600
+                glowColorRGB = '16, 185, 129'; // Green RGB
+            } else if (healthPercentage >= 60) {
+                colorClass = 'text-yellow-600';
+                statusText = 'Good Health (Monitor)';
+                batteryColorHex = '#f59e0b'; // Yellow-600
+                glowColorRGB = '245, 158, 11'; // Yellow RGB
+            } else {
+                colorClass = 'text-red-600';
+                statusText = 'Poor Health (Consider Replacement)';
+                batteryColorHex = '#dc2626'; // Red-600
+                glowColorRGB = '220, 38, 38'; // Red RGB
+            }
+
+            // Update UI elements
+            healthValueSpan.textContent = `${roundedHealth}%`;
+            healthValueSpan.className = `text-5xl font-extrabold transition-colors duration-300 ${colorClass}`;
+            
+            healthStatusSpan.textContent = statusText;
+            healthStatusSpan.className = `mt-2 text-sm font-medium px-3 py-1 rounded-full transition-colors duration-300 ${colorClass.replace('600', '100')} ${colorClass.replace('text', 'bg')}`;
+
+            // --- Animation Updates ---
+
+            // 1. Apply Shadow Glow Animation to resultContainer
+            resultContainer.classList.add('glowing-box');
+            resultContainer.style.setProperty('--glow-rgb', glowColorRGB);
+
+            // 2. Battery Icon Color Match (New/Modified)
+            // The battery icon boundary and cap should match the status color
+            batteryVisual.style.borderColor = batteryColorHex;
+            batteryCap.style.backgroundColor = batteryColorHex;
+
+            // 3. Battery Fill Animation (CSS transition handles smoothness)
+            let fillWidth = Math.min(100, Math.max(0, healthPercentage));
+            batteryFill.style.width = `${fillWidth}%`; 
+            batteryFill.style.backgroundColor = batteryColorHex;
+            
+            // Update display fields (Capacity fields were updated above for the error case too)
+            designCapacityDisplay.textContent = `${designCapacity.toLocaleString()} mWh`;
+            fullChargeCapacityDisplay.textContent = `${fullChargeCapacity.toLocaleString()} mWh`;
+
+            // Update tips
+            const cycleCountForTips = isFileUpload ? metadata.cycleCount : null;
+            updateHealthTips(healthPercentage, cycleCountForTips);
+        }
+
+        /**
+         * Handler for manual input changes.
+         */
+        function handleManualInput() {
+            // No metadata for manual input, so we pass 'null'
+            const designCapacity = parseFloat(designCapacityInput.value);
+            const fullChargeCapacity = parseFloat(fullChargeCapacityInput.value);
+            // Get Battery Age input
+            const batteryAgeMonths = parseFloat(batteryAgeInput.value);
+            
+            // Calling calculateHealth with batteryAgeMonths and null for metadata
+            calculateHealth(designCapacity, fullChargeCapacity, batteryAgeMonths, null); 
+        }
+        
+        /**
+         * Main function to extract data from uploaded HTML file and trigger calculation.
+         */
+        function handleFileUpload(event) {
+            // The file object is now inside event.target.files[0]
+            const file = event.target.files[0];
+
+            if (!file) {
+                // If file is unselected, reset the state
+                designCapacityInput.value = '';
+                fullChargeCapacityInput.value = '';
+                // Get the current battery age value from input
+                const batteryAgeMonths = parseFloat(batteryAgeInput.value);
+                calculateHealth(null, null, batteryAgeMonths, null);
+                return;
+            }
+
+            // Set loading state
+            healthValueSpan.textContent = '...';
+            healthValueSpan.className = 'text-5xl font-extrabold text-gray-400 transition-colors duration-300';
+            healthStatusSpan.textContent = `Reading ${file.name}...`;
+
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                const htmlContent = e.target.result;
+                let designCapacity = null;
+                let fullChargeCapacity = null;
+                let metadata = null;
+                // Get the current battery age value from input
+                const batteryAgeMonths = parseFloat(batteryAgeInput.value);
+
+                try {
+                    // 1. Parse the HTML content using DOMParser
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(htmlContent, 'text/html');
+
+                    // 2. Extract capacities
+                    designCapacity = findValue(doc, 'DESIGN CAPACITY', cleanCapacityValue); 
+                    fullChargeCapacity = findValue(doc, 'FULL CHARGE CAPACITY', cleanCapacityValue) || findValue(doc, 'LAST FULL CHARGE CAPACITY', cleanCapacityValue);
+
+                    // 3. Extract all metadata
+                    metadata = findBatteryMetadata(doc);
+
+                    // 4. Validate extracted values
+                    if (!designCapacity || designCapacity <= 0) {
+                        throw new Error('Could not find or parse Design Capacity.');
+                    }
+                    if (!fullChargeCapacity || fullChargeCapacity <= 0) {
+                        throw new Error('Could not find or parse Full Charge Capacity.');
+                    }
+                    
+                    // 5. Populate manual inputs with extracted capacity values 
+                    designCapacityInput.value = designCapacity;
+                    fullChargeCapacityInput.value = fullChargeCapacity;
+
+                    // 6. Calculate health (now passing batteryAgeMonths and metadata object)
+                    calculateHealth(designCapacity, fullChargeCapacity, batteryAgeMonths, metadata);
+                    
+                    // Show success toast
+                    showToast('Report analyzed successfully!', 'success');
+
+                } catch (error) {
+                    console.error("Extraction error:", error);
+                    
+                    // Show error toast
+                    showToast('Error: Failed to parse report data.', 'error');
+
+                    // Show error message in UI
+                    healthValueSpan.textContent = 'Error';
+                    healthValueSpan.className = 'text-5xl font-extrabold text-red-600 transition-colors duration-300';
+                    healthStatusSpan.textContent = 'Extraction Failed: ' + error.message;
+                    healthStatusSpan.className = 'mt-2 text-sm font-medium px-3 py-1 rounded-full bg-red-100 text-red-600 transition-colors duration-300';
+                    
+                    // Reset capacity inputs and displays (keeping age as is)
+                    designCapacityInput.value = '';
+                    fullChargeCapacityInput.value = '';
+                    calculateHealth(null, null, batteryAgeMonths, null); 
+
+                }
+            };
+
+            reader.onerror = () => {
+                console.error("File reading error");
+                showToast('Error reading file from disk.', 'error');
+                healthValueSpan.textContent = 'Error';
+                healthStatusSpan.textContent = 'Failed to read file.';
+                healthValueSpan.className = 'text-5xl font-extrabold text-red-600 transition-colors duration-300';
+                healthStatusSpan.className = 'mt-2 text-sm font-medium px-3 py-1 rounded-full bg-red-100 text-red-600 transition-colors duration-300';
+            };
+
+            // Start reading the file
+            reader.readAsText(file);
+        }
+        
+        // This function is the secure alternative to "automatic grab"
+        function attemptAutomaticFileLoad() {
+            // Because we cannot access the local filesystem, we notify the user 
+            // that manual selection is needed unless the report is already loaded.
+            
+            if (designCapacityInput.value || fullChargeCapacityInput.value) {
+                // If capacity is already set (e.g., from a previous manual input or page refresh), do nothing.
+                return;
+            }
+
+            // Prompt the user to manually select the report file
+            setTimeout(() => {
+                showToast('Please manually input values or select your battery-report.html file.', 'error');
+            }, 1000);
+            
+            // We cannot trigger fileUploadInput.click() reliably or securely in all browsers,
+            // so we rely on the visual prompt and the toast notification.
+        }
+
+
+        // Attach event listeners for manual input (real-time calculation)
+        designCapacityInput.addEventListener('input', handleManualInput);
+        fullChargeCapacityInput.addEventListener('input', handleManualInput);
+        batteryAgeInput.addEventListener('input', handleManualInput); 
+
+        // Attach event listener to the file input
+        fileUploadInput.addEventListener('change', handleFileUpload);
+        
+        // Initial call to set up the default state
+        const initialBatteryAge = parseFloat(batteryAgeInput.value); // Use default age for initial state
+        calculateHealth(null, null, initialBatteryAge, null); 
+
+        // Initial hide of metadata rows and "automatic" file load prompt
+        document.addEventListener('DOMContentLoaded', () => {
+             toggleMetadataVisibility(false);
+             // Simulate "automatic" search by prompting for manual selection immediately
+             attemptAutomaticFileLoad();
+        });
+
+    </script>
+</body>
+</html>
