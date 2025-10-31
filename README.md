@@ -10,14 +10,6 @@ This repository currently hosts the following primary tools:
 A script/application to provide detailed analysis and reports on the health, cycle count, and long-term degradation of your Windows laptop battery.
 * **Location:** `windows-tools/Battery Health Analyzer/`
 * **Features:** Cycle count tracking, full charge capacity vs. design capacity comparison, and health history logging.
-
-### ⚙️ Spotify Customizer
-* **Location:** `windows-tools/Spotify Customizer/`
-* **Features:** Customize your spotify application and blocks Ads too.
-
-### ⚙️ Windows and MS Office Customizer
-* **Location:** `windows-tools/Windows and MS Office Customizer/`
-* **Features:** You know what i really mean 😏.
   
 ## ⚙️ Installation & Usage
 
